@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wikipedia Graph Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            overflow: hidden;
+        }
+        
+        .container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        
+        .graph-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+        
+        .node {
+            cursor: pointer;
+            stroke: #333;
+            stroke-width: 2px;
+        }
+        
+        .node.root {
+            fill: #4CAF50;
+        }
+        
+        .node.missing {
+            fill: #f44336;
+        }
+        
+        .node.first-degree {
+            fill: #4ecdc4;
+        }
+        
+        .node.second-degree {
+            fill: #45b7d1;
+        }
+        
+        .node.expandable {
+            stroke: #FFC107;
+            stroke-width: 3px;
+            cursor: pointer;
+        }
+        
+        .node.expanding {
+            stroke: #FF9800;
+            stroke-width: 4px;
+            animation: pulse 1s ease-in-out infinite alternate;
+        }
+        
+        @keyframes pulse {
+            from { stroke-opacity: 0.8; }
+            to { stroke-opacity: 0.3; }
+        }
+        
+        .link {
+            stroke: #555;
+            stroke-width: 1px;
+            stroke-opacity: 0.6;
+        }
+        
+        .node-label {
+            font-size: 12px;
+            fill: #e0e0e0;
+            text-anchor: middle;
+            pointer-events: none;
+            user-select: none;
+        }
+        
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            max-width: 300px;
+            z-index: 1000;
+        }
+        
+        .status {
+            font-size: 14px;
+            margin-bottom: 10px;
+            color: #4ecdc4;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid #333;
+            border-radius: 50%;
+            border-top-color: #4ecdc4;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 8px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            max-width: 300px;
+        }
+        
+        .controls button {
+            background: #4ecdc4;
+            color: #1a1a1a;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            font-size: 12px;
+        }
+        
+        .controls button:hover {
+            background: #45b7d1;
+        }
+        
+        .help-text {
+            font-size: 11px;
+            color: #aaa;
+            margin-top: 10px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="info-panel">
+            <div class="status" id="status">
+                <span class="loading"></span>
+                Initializing...
+            </div>
+            <div>
+                <strong>Root:</strong> <span id="root-article">-</span><br>
+                <strong>Nodes:</strong> <span id="node-count">0</span><br>
+                <strong>Links:</strong> <span id="link-count">0</span>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button onclick="resetGraph()">Reset</button>
+            <button onclick="pauseResume()" id="pause-btn">Pause</button>
+            <div class="help-text">
+                <strong>Click:</strong> Expand node (10 more links)<br>
+                <strong>Ctrl+Click:</strong> Open Wikipedia page<br>
+                <strong>Drag:</strong> Move nodes<br>
+                <strong>Colors:</strong> 🟢 Root, 🔵 Links, 🔴 Missing, 🟡 Expandable
+            </div>
+        </div>
+        
+        <div class="graph-container">
+            <svg id="graph"></svg>
+        </div>
+    </div>
+
+    <script>
+        // Wikipedia Graph Visualization
+        class WikipediaGraph {
+            constructor() {
+                this.nodes = new Map();
+                this.links = new Set();
+                this.processedArticles = new Set();
+                this.expandedNodes = new Set();
+                this.queue = [];
+                this.isProcessing = false;
+                this.isPaused = false;
+                
+                // D3 setup
+                this.width = window.innerWidth;
+                this.height = window.innerHeight;
+                
+                this.svg = d3.select("#graph")
+                    .attr("width", this.width)
+                    .attr("height", this.height);
+                
+                // Create zoom behavior
+                this.zoom = d3.zoom()
+                    .scaleExtent([0.1, 4])
+                    .on("zoom", (event) => {
+                        this.container.attr("transform", event.transform);
+                    });
+                
+                this.svg.call(this.zoom);
+                
+                // Create container for zoomable content
+                this.container = this.svg.append("g");
+                
+                // Initialize simulation
+                this.simulation = d3.forceSimulation()
+                    .force("link", d3.forceLink().id(d => d.id).distance(100))
+                    .force("charge", d3.forceManyBody().strength(-300))
+                    .force("center", d3.forceCenter(this.width / 2, this.height / 2))
+                    .force("collision", d3.forceCollide().radius(30));
+                
+                // Create link and node groups
+                this.linkGroup = this.container.append("g").attr("class", "links");
+                this.nodeGroup = this.container.append("g").attr("class", "nodes");
+                
+                // Start with hardcoded article
+                this.startArticle = "Artificial_intelligence";
+                this.init();
+            }
+            
+            async init() {
+                console.log("🚀 Starting Wikipedia graph visualization");
+                this.updateStatus("Loading root article...");
+                
+                // Add root node
+                this.addNode(this.startArticle, "root", 0);
+                this.updateDisplay();
+                
+                // Queue the root article for processing
+                this.queue.push({title: this.startArticle, degree: 0});
+                
+                // Start processing
+                this.processQueue();
+            }
+            
+            addNode(title, type, degree) {
+                if (!this.nodes.has(title)) {
+                    this.nodes.set(title, {
+                        id: title,
+                        title: title,
+                        type: type,
+                        degree: degree,
+                        expanded: false,
+                        x: Math.random() * this.width,
+                        y: Math.random() * this.height
+                    });
+                    console.log(`➕ Added node: ${title} (${type})`);
+                }
+            }
+            
+            async expandNode(title) {
+                if (this.expandedNodes.has(title)) {
+                    console.log(`⏭️ Node ${title} already expanded`);
+                    return;
+                }
+                
+                this.expandedNodes.add(title);
+                const node = this.nodes.get(title);
+                if (node) {
+                    node.expanded = true;
+                }
+                
+                console.log(`🔄 Expanding node: ${title}`);
+                this.updateNodeVisuals(title, 'expanding');
+                
+                try {
+                    // Fetch both outbound and inbound links for expansion
+                    const outboundLinks = await this.fetchArticleLinks(title, 'outbound');
+                    const inboundLinks = await this.fetchArticleLinks(title, 'inbound');
+                    
+                    console.log(`🔍 Expanding ${title}: ${outboundLinks.length} outbound, ${inboundLinks.length} inbound`);
+                    
+                    // Process outbound links
+                    for (const link of outboundLinks) {
+                        if (!this.nodes.has(link)) {
+                            const pageExists = await this.checkPageExists(link);
+                            const nodeType = pageExists ? "first-degree" : "missing";
+                            this.addNode(link, nodeType, node.degree + 1);
+                        }
+                        this.addLink(title, link);
+                    }
+                    
+                    // Process inbound links
+                    for (const link of inboundLinks) {
+                        if (!this.nodes.has(link)) {
+                            const pageExists = await this.checkPageExists(link);
+                            const nodeType = pageExists ? "first-degree" : "missing";
+                            this.addNode(link, nodeType, node.degree + 1);
+                        }
+                        this.addLink(link, title);
+                    }
+                    
+                    this.updateDisplay();
+                    this.updateNodeVisuals(title, 'expandable');
+                    
+                } catch (error) {
+                    console.error(`❌ Error expanding node ${title}:`, error);
+                    this.updateNodeVisuals(title, 'expandable');
+                }
+            }
+            
+            updateNodeVisuals(title, state) {
+                const nodeElement = this.nodeGroup.selectAll(".node-group")
+                    .filter(d => d.id === title)
+                    .select("circle");
+                
+                nodeElement.classed("expanding", state === "expanding");
+                nodeElement.classed("expandable", state === "expandable");
+            }
+            
+            addLink(source, target) {
+                const linkId = `${source}-${target}`;
+                if (!this.links.has(linkId) && this.nodes.has(source) && this.nodes.has(target)) {
+                    this.links.add(linkId);
+                    console.log(`🔗 Added link: ${source} -> ${target}`);
+                } else if (!this.nodes.has(source) || !this.nodes.has(target)) {
+                    console.warn(`⚠️ Skipping link ${source} -> ${target}: missing node(s)`);
+                }
+            }
+            
+            async processQueue() {
+                if (this.isPaused || this.queue.length === 0) {
+                    this.updateStatus("Ready");
+                    return;
+                }
+                
+                this.isProcessing = true;
+                const current = this.queue.shift();
+                
+                if (this.processedArticles.has(current.title)) {
+                    this.processQueue();
+                    return;
+                }
+                
+                this.processedArticles.add(current.title);
+                
+                try {
+                    this.updateStatus(`Processing: ${current.title}`);
+                    console.log(`📖 Reading article: ${current.title} (degree: ${current.degree})`);
+                    
+                    // Fetch both outbound and inbound links
+                    const outboundLinks = await this.fetchArticleLinks(current.title, 'outbound');
+                    const inboundLinks = await this.fetchArticleLinks(current.title, 'inbound');
+                    
+                    console.log(`🔍 Found ${outboundLinks.length} outbound and ${inboundLinks.length} inbound links in ${current.title}`);
+                    
+                    // Process outbound links
+                    for (const link of outboundLinks) {
+                        const nodeType = current.degree === 0 ? "first-degree" : "second-degree";
+                        
+                        // Check if the page exists before adding as node
+                        const pageExists = await this.checkPageExists(link);
+                        if (pageExists) {
+                            this.addNode(link, nodeType, current.degree + 1);
+                            this.addLink(current.title, link);
+                            
+                            // Queue for further processing if not too deep
+                            if (current.degree < 1) {
+                                this.queue.push({title: link, degree: current.degree + 1});
+                            }
+                        } else {
+                            // Add missing page as red node
+                            this.addNode(link, "missing", current.degree + 1);
+                            this.addLink(current.title, link);
+                            console.warn(`⚠️ Added missing page as red node: ${link}`);
+                        }
+                    }
+                    
+                    // Process inbound links
+                    for (const link of inboundLinks) {
+                        const nodeType = current.degree === 0 ? "first-degree" : "second-degree";
+                        
+                        // Check if the page exists before adding as node
+                        const pageExists = await this.checkPageExists(link);
+                        if (pageExists) {
+                            this.addNode(link, nodeType, current.degree + 1);
+                            this.addLink(link, current.title); // Note: reversed direction for inbound links
+                            
+                            // Queue for further processing if not too deep
+                            if (current.degree < 1) {
+                                this.queue.push({title: link, degree: current.degree + 1});
+                            }
+                        } else {
+                            // Add missing page as red node
+                            this.addNode(link, "missing", current.degree + 1);
+                            this.addLink(link, current.title); // Note: reversed direction for inbound links
+                            console.warn(`⚠️ Added missing inbound page as red node: ${link}`);
+                        }
+                    }
+                    
+                    this.updateDisplay();
+                    
+                    // Process next item with delay
+                    setTimeout(() => {
+                        this.processQueue();
+                    }, 500);
+                    
+                } catch (error) {
+                    console.error(`❌ Error processing ${current.title}:`, error);
+                    setTimeout(() => {
+                        this.processQueue();
+                    }, 1000);
+                }
+            }
+            
+            async checkPageExists(title) {
+                try {
+                    const apiUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&titles=${encodeURIComponent(title)}`;
+                    const response = await fetch(apiUrl);
+                    
+                    if (!response.ok) {
+                        return false;
+                    }
+                    
+                    const data = await response.json();
+                    if (!data.query || !data.query.pages) {
+                        return false;
+                    }
+                    
+                    const pages = data.query.pages;
+                    const pageId = Object.keys(pages)[0];
+                    
+                    // Check if page exists (negative page ID means it doesn't exist)
+                    return pageId > 0 && !pages[pageId].missing;
+                    
+                } catch (error) {
+                    console.error(`❌ Error checking page existence for ${title}:`, error);
+                    return false;
+                }
+            }
+
+            async fetchArticleLinks(title, direction = 'outbound') {
+                try {
+                    let apiUrl;
+                    if (direction === 'outbound') {
+                        // Get outbound links (links FROM this article)
+                        apiUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&prop=links&titles=${encodeURIComponent(title)}&pllimit=20&plnamespace=0`;
+                    } else {
+                        // Get inbound links (links TO this article)
+                        apiUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&list=backlinks&bltitle=${encodeURIComponent(title)}&bllimit=20&blnamespace=0`;
+                    }
+                    
+                    console.log(`🌐 Fetching ${direction} links from: ${apiUrl}`);
+                    
+                    const response = await fetch(apiUrl);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    console.log(`📊 Raw API response for ${title} (${direction}):`, data);
+                    
+                    let linkTitles = [];
+                    
+                    if (direction === 'outbound') {
+                        if (!data.query || !data.query.pages) {
+                            console.warn(`⚠️ No pages found for ${title}`);
+                            return [];
+                        }
+                        
+                        // Extract outbound links from the response
+                        const pages = data.query.pages;
+                        const pageId = Object.keys(pages)[0];
+                        const links = pages[pageId].links || [];
+                        
+                        linkTitles = links.map(link => link.title.replace(/ /g, '_')).filter(title => {
+                            return !title.startsWith('Category:') && 
+                                   !title.startsWith('Template:') && 
+                                   !title.startsWith('File:') &&
+                                   !title.startsWith('Help:') &&
+                                   !title.startsWith('Wikipedia:');
+                        });
+                    } else {
+                        // Extract inbound links (backlinks)
+                        if (!data.query || !data.query.backlinks) {
+                            console.warn(`⚠️ No backlinks found for ${title}`);
+                            return [];
+                        }
+                        
+                        linkTitles = data.query.backlinks.map(link => link.title.replace(/ /g, '_')).filter(title => {
+                            return !title.startsWith('Category:') && 
+                                   !title.startsWith('Template:') && 
+                                   !title.startsWith('File:') &&
+                                   !title.startsWith('Help:') &&
+                                   !title.startsWith('Wikipedia:');
+                        });
+                    }
+                    
+                    console.log(`🔗 Extracted ${linkTitles.length} valid ${direction} links from ${title}`);
+                    return linkTitles.slice(0, 10); // Limit to 10 links
+                    
+                } catch (error) {
+                    console.error(`❌ Failed to fetch ${direction} links for ${title}:`, error);
+                    return [];
+                }
+            }
+            
+            updateDisplay() {
+                const nodesArray = Array.from(this.nodes.values());
+                const linksArray = Array.from(this.links).map(linkId => {
+                    const [source, target] = linkId.split('-');
+                    return {source, target};
+                }).filter(link => {
+                    // Only include links where both nodes exist
+                    const sourceExists = this.nodes.has(link.source);
+                    const targetExists = this.nodes.has(link.target);
+                    if (!sourceExists || !targetExists) {
+                        console.warn(`⚠️ Filtering out link ${link.source} -> ${link.target}: missing node(s)`);
+                        return false;
+                    }
+                    return true;
+                });
+                
+                // Update links
+                const linkSelection = this.linkGroup
+                    .selectAll(".link")
+                    .data(linksArray, d => `${d.source}-${d.target}`);
+                
+                linkSelection.enter()
+                    .append("line")
+                    .attr("class", "link");
+                
+                linkSelection.exit().remove();
+                
+                // Update nodes
+                const nodeSelection = this.nodeGroup
+                    .selectAll(".node-group")
+                    .data(nodesArray, d => d.id);
+                
+                const nodeEnter = nodeSelection.enter()
+                    .append("g")
+                    .attr("class", "node-group")
+                    .call(d3.drag()
+                        .on("start", this.dragstarted.bind(this))
+                        .on("drag", this.dragged.bind(this))
+                        .on("end", this.dragended.bind(this)));
+                
+                nodeEnter.append("circle")
+                    .attr("class", d => `node ${d.type} ${this.expandedNodes.has(d.id) ? 'expandable' : ''}`)
+                    .attr("r", d => d.type === "root" ? 12 : (d.type === "first-degree" ? 8 : 6))
+                    .on("click", (event, d) => {
+                        event.stopPropagation();
+                        if (event.ctrlKey || event.metaKey) {
+                            // Ctrl/Cmd + Click: Open Wikipedia page
+                            console.log(`🖱️ Opening Wikipedia page: ${d.title}`);
+                            window.open(`https://en.wikipedia.org/wiki/${d.title}`, '_blank');
+                        } else {
+                            // Regular click: Expand node
+                            console.log(`🖱️ Expanding node: ${d.title}`);
+                            this.expandNode(d.title);
+                        }
+                    });
+                
+                nodeEnter.append("text")
+                    .attr("class", "node-label")
+                    .attr("dy", d => d.type === "root" ? 20 : (d.type === "first-degree" ? 16 : 14))
+                    .text(d => d.title.replace(/_/g, ' '))
+                    .style("font-size", d => d.type === "root" ? "14px" : (d.type === "first-degree" ? "12px" : "10px"));
+                
+                nodeSelection.exit().remove();
+                
+                // Update simulation
+                this.simulation.nodes(nodesArray);
+                this.simulation.force("link").links(linksArray);
+                this.simulation.alpha(1).restart();
+                
+                // Update simulation tick
+                this.simulation.on("tick", () => {
+                    this.linkGroup.selectAll(".link")
+                        .attr("x1", d => d.source.x)
+                        .attr("y1", d => d.source.y)
+                        .attr("x2", d => d.target.x)
+                        .attr("y2", d => d.target.y);
+                    
+                    this.nodeGroup.selectAll(".node-group")
+                        .attr("transform", d => `translate(${d.x},${d.y})`);
+                });
+                
+                // Update counters
+                document.getElementById("node-count").textContent = this.nodes.size;
+                document.getElementById("link-count").textContent = this.links.size;
+                document.getElementById("root-article").textContent = this.startArticle.replace(/_/g, ' ');
+            }
+            
+            dragstarted(event, d) {
+                if (!event.active) this.simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+            
+            dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+            
+            dragended(event, d) {
+                if (!event.active) this.simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+            
+            updateStatus(message) {
+                const statusEl = document.getElementById("status");
+                if (message === "Ready") {
+                    statusEl.innerHTML = "Ready";
+                } else {
+                    statusEl.innerHTML = `<span class="loading"></span>${message}`;
+                }
+            }
+            
+            pause() {
+                this.isPaused = true;
+                this.updateStatus("Paused");
+            }
+            
+            resume() {
+                this.isPaused = false;
+                this.processQueue();
+            }
+            
+            reset() {
+                this.nodes.clear();
+                this.links.clear();
+                this.processedArticles.clear();
+                this.expandedNodes.clear();
+                this.queue = [];
+                this.isPaused = false;
+                
+                this.linkGroup.selectAll("*").remove();
+                this.nodeGroup.selectAll("*").remove();
+                
+                this.init();
+            }
+        }
+        
+        // Global functions
+        let graph;
+        
+        function resetGraph() {
+            graph.reset();
+        }
+        
+        function pauseResume() {
+            const btn = document.getElementById("pause-btn");
+            if (graph.isPaused) {
+                graph.resume();
+                btn.textContent = "Pause";
+            } else {
+                graph.pause();
+                btn.textContent = "Resume";
+            }
+        }
+        
+        // Initialize when page loads
+        document.addEventListener("DOMContentLoaded", () => {
+            graph = new WikipediaGraph();
+        });
+        
+        // Handle window resize
+        window.addEventListener("resize", () => {
+            if (graph) {
+                graph.width = window.innerWidth;
+                graph.height = window.innerHeight;
+                graph.svg.attr("width", graph.width).attr("height", graph.height);
+                graph.simulation.force("center", d3.forceCenter(graph.width / 2, graph.height / 2));
+            }
+        });
+    </script>
+</body>
+</html>
