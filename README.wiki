@@ -6,6 +6,10 @@ An interactive network visualization tool that maps Wikipedia articles and their
 '''📁 Source Code''': https://github.com/wikiloop/galaxy<br>
 '''📖 Wikipedia Page''': [[WP:WikiLoop Galaxy]]
 
+== Demo ==
+
+<div style="position: relative; padding-bottom: 86.26198083067092%; height: 0;"><iframe src="https://www.loom.com/embed/5ccb54c0ce934939aee0458d23fa0cb2?sid=77210291-f6a8-4351-ac9d-a347152a00db" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe></div>
+
 == Features ==
 
 === Core Functionality ===

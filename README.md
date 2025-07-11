@@ -6,6 +6,11 @@ An interactive network visualization tool that maps Wikipedia articles and their
 **📁 Source Code**: https://github.com/wikiloop/galaxy  
 **📖 Wikipedia Page**: [[WP:WikiLoop Galaxy]]
 
+## Demo
+
+- ![WikiLoop Galaxy Demo](https://www.loom.com/embed/5ccb54c0ce934939aee0458d23fa0cb2?sid=77210291-f6a8-4351-ac9d-a347152a00db)
+- ![demo-v0.0.2.gif](https://galaxy.wikiloop.org/demo-v0.0.2.gif)
+
 ## Features
 
 ### Core Functionality
