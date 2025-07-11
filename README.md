@@ -1,6 +1,10 @@
-# Wikipedia Graph Visualization
+# WikiLoop Galaxy
 
 An interactive network visualization tool that maps Wikipedia articles and their interconnections using the Wikipedia API. Built with D3.js for dynamic graph rendering and real-time exploration.
+
+**🌐 Web App**: https://galaxy.wikiloop.org  
+**📁 Source Code**: https://github.com/wikiloop/galaxy  
+**📖 Wikipedia Page**: [[WP:WikiLoop Galaxy]]
 
 ## Features
 
@@ -109,9 +113,50 @@ The application provides detailed console output:
 6. Update visual representation
 7. Enable click-to-expand for all nodes
 
+## Roadmap
+
+### 1. Wikipedia User Script
+Create a Wikipedia user script that hardcore Wikipedians can install directly on Wikipedia pages to instantly visualize article networks without leaving the site.
+
+**Features:**
+- One-click graph generation from any Wikipedia article
+- Seamless integration with Wikipedia's interface
+- Customizable settings for power users
+- Export capabilities for research and analysis
+
+### 2. Browser Extensions
+Develop browser extensions for easy installation by non-technical users across all major browsers:
+
+- **Chrome Extension**: Available on Chrome Web Store
+- **Firefox Extension**: Available on Mozilla Add-ons
+- **Edge Extension**: Available on Microsoft Edge Add-ons
+- **Safari Extension**: Available on Mac App Store
+- **DuckDuckGo Extension**: Privacy-focused browsing integration
+
+**Benefits:**
+- No technical setup required
+- Automatic updates
+- One-click installation
+- Cross-browser compatibility
+
+### 3. Performance Optimization with Caching
+Implement intelligent caching system to dramatically improve performance and reduce Wikipedia API load.
+
+**Caching Strategy:**
+- Local storage for frequently accessed articles
+- Session-based cache for current browsing session
+- Intelligent cache invalidation and updates
+- Offline capability for previously loaded graphs
+
+**Performance Improvements:**
+- Faster graph loading times
+- Reduced API calls to Wikipedia
+- Better user experience with instant results
+- Bandwidth optimization for mobile users
+
 ## Future Enhancements
 
-- **Search Functionality**: Custom root article selection
+- **Search Functionality**: Custom root article selection ✅ (Completed)
 - **Export Options**: Save graph as image or data
 - **Filtering**: Hide/show specific link types
 - **Clustering**: Group related articles

@@ -95,5 +95,33 @@ python -m http.server 8000
 ## File Structure
 
 - `index.html`: Complete single-file application (HTML, CSS, JavaScript)
-- `README.md`: User documentation and feature description
+- `README.md`: User documentation and feature description (Markdown format)
+- `README.wiki`: User documentation in wikitext format for Wikipedia
 - `CLAUDE.md`: This development guide
+- `LICENSE`: MIT License file
+
+## Documentation Synchronization
+
+**IMPORTANT**: Always keep `README.md` and `README.wiki` in sync content-wise.
+
+### When updating documentation:
+1. **Primary Source**: Make changes to `README.md` first
+2. **Sync to Wiki**: Convert and update `README.wiki` to match
+3. **Format Differences**: 
+   - `README.md`: Use Markdown syntax (`#`, `**bold**`, `- list`, etc.)
+   - `README.wiki`: Use wikitext syntax (`=`, `'''bold'''`, `*`, etc.)
+4. **Content Parity**: Ensure both files contain the same information, features, and updates
+
+### Conversion Guidelines:
+- Headers: `# Title` → `= Title =`
+- Bold: `**text**` → `'''text'''`
+- Lists: `- item` → `* item`
+- Code blocks: ``` → `<syntaxhighlight>` or `<code>`
+- Links: `[text](url)` → `[url text]`
+- File references: `file.ext` → `<code>file.ext</code>`
+
+### Validation:
+- Check both files have identical sections and content
+- Verify all features and roadmap items are present in both
+- Ensure technical details match across formats
+- Test that code examples work in both formats

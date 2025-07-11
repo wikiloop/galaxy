@@ -88,8 +88,50 @@
             padding: 15px;
             border-radius: 8px;
             border: 1px solid #333;
-            max-width: 300px;
+            max-width: 350px;
             z-index: 1000;
+        }
+        
+        .root-input-container {
+            display: flex;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        
+        .root-input {
+            flex: 1;
+            background: #333;
+            border: 1px solid #555;
+            color: #e0e0e0;
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-right: 8px;
+        }
+        
+        .root-input:focus {
+            outline: none;
+            border-color: #4ecdc4;
+        }
+        
+        .go-button {
+            background: #4ecdc4;
+            color: #1a1a1a;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .go-button:hover {
+            background: #45b7d1;
+        }
+        
+        .go-button:disabled {
+            background: #666;
+            cursor: not-allowed;
         }
         
         .status {
@@ -182,8 +224,11 @@
                 <span class="loading"></span>
                 Initializing...
             </div>
+            <div class="root-input-container">
+                <input type="text" class="root-input" id="root-input" placeholder="Enter Wikipedia article title" value="Artificial Intelligence">
+                <button class="go-button" id="go-button" onclick="loadNewRoot()">Go</button>
+            </div>
             <div>
-                <strong>Root:</strong> <span id="root-article">-</span><br>
                 <strong>Nodes:</strong> <span id="node-count">0</span><br>
                 <strong>Links:</strong> <span id="link-count">0</span>
             </div>
@@ -630,7 +675,6 @@
                 // Update counters
                 document.getElementById("node-count").textContent = this.nodes.size;
                 document.getElementById("link-count").textContent = this.links.size;
-                document.getElementById("root-article").textContent = this.startArticle.replace(/_/g, ' ');
             }
             
             dragstarted(event, d) {
@@ -682,6 +726,36 @@
                 
                 this.init();
             }
+            
+            loadNewRoot(articleTitle) {
+                // Convert display name to Wikipedia title format
+                const normalizedTitle = articleTitle.replace(/ /g, '_');
+                console.log(`🔄 Loading new root article: ${normalizedTitle}`);
+                
+                // Clear existing graph
+                this.nodes.clear();
+                this.links.clear();
+                this.processedArticles.clear();
+                this.expandedNodes.clear();
+                this.queue = [];
+                this.isPaused = false;
+                
+                // Remove existing visualization
+                this.linkGroup.selectAll("*").remove();
+                this.nodeGroup.selectAll("*").remove();
+                
+                // Set new root article
+                this.startArticle = normalizedTitle;
+                
+                // Update input box to show normalized title
+                const rootInput = document.getElementById("root-input");
+                if (rootInput) {
+                    rootInput.value = normalizedTitle.replace(/_/g, ' ');
+                }
+                
+                // Start fresh initialization
+                this.init();
+            }
         }
         
         // Global functions
@@ -702,9 +776,42 @@
             }
         }
         
+        function loadNewRoot() {
+            const input = document.getElementById("root-input");
+            const button = document.getElementById("go-button");
+            const articleTitle = input.value.trim();
+            
+            if (!articleTitle) {
+                alert("Please enter a Wikipedia article title");
+                return;
+            }
+            
+            // Disable button during loading
+            button.disabled = true;
+            button.textContent = "Loading...";
+            
+            // Load new root article
+            graph.loadNewRoot(articleTitle);
+            
+            // Re-enable button after a short delay
+            setTimeout(() => {
+                button.disabled = false;
+                button.textContent = "Go";
+            }, 1000);
+        }
+        
         // Initialize when page loads
         document.addEventListener("DOMContentLoaded", () => {
             graph = new WikipediaGraph();
+            
+            // Add Enter key support for root input
+            const rootInput = document.getElementById("root-input");
+            rootInput.addEventListener("keydown", (event) => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    loadNewRoot();
+                }
+            });
         });
         
         // Handle window resize
