@@ -17,22 +17,30 @@ An interactive network visualization tool that maps Wikipedia articles and their
 ### Core Functionality
 - **Bidirectional Link Traversal**: Explores both outbound links (FROM articles) and inbound links (TO articles)
 - **Real-time Graph Building**: Starts with a root article and progressively builds the network
-- **Interactive Expansion**: Click any node to expand it with 10 more connected articles
+- **Smart Context Menu**: Right-click-style menu with options to expand, collapse, open, or set as root
+- **Priority-Based Crawling**: Prioritizes Vital articles (3000), Featured articles (2000), Good articles (1000), and articles by backlink count
 - **Link Validation**: Checks page existence to handle broken Wikipedia links
 
 ### Visual Design
 - **Obsidian-style Dark Theme**: Clean, modern interface optimized for graph exploration
 - **Color-coded Nodes**:
-  - 🟢 **Green**: Root article (starting point)
-  - 🔵 **Blue/Teal**: Valid Wikipedia articles (1st/2nd degree)
+  - ⚪ **White**: Root article (starting point) with green border
+  - 🟡 **Gold**: Vital articles (highest priority, larger size)
+  - 🟢 **Green**: Featured articles (high priority)
+  - 🔵 **Light Blue**: Good articles (medium priority)
+  - 🔵 **Blue/Teal**: Regular Wikipedia articles (1st/2nd degree)
   - 🔴 **Red**: Missing/non-existent pages (red links)
   - 🟡 **Yellow Border**: Expandable nodes with pulsing animation
 - **Force-directed Layout**: Natural node positioning with physics simulation
 - **Zoom & Pan**: Navigate large graphs with mouse controls
 
 ### Interaction
-- **Click**: Expand node to reveal 10 more inbound + 10 outbound links
-- **Ctrl/Cmd + Click**: Open Wikipedia article in new tab
+- **Click**: Show context menu with multiple options
+- **Context Menu Options**:
+  - 🔗 **Open Wikipedia Page**: Opens article in new tab
+  - 🔄 **Collapse**: Removes leaf nodes (nodes with only one connection)
+  - ➕ **Expand**: Reveals 10 more inbound + 10 outbound links
+  - 🎯 **Set as Root**: Makes the selected node the new root of the graph
 - **Drag**: Move nodes around the canvas
 - **Scroll**: Zoom in/out of the graph
 
@@ -40,6 +48,7 @@ An interactive network visualization tool that maps Wikipedia articles and their
 
 ### API Integration
 - Uses Wikipedia REST API for article links and backlinks
+- Fetches article categories and metadata for quality assessment
 - Implements proper error handling and rate limiting
 - Filters out non-article links (categories, templates, files)
 - Validates page existence before adding to graph
@@ -48,6 +57,8 @@ An interactive network visualization tool that maps Wikipedia articles and their
 - **Node Deduplication**: Prevents duplicate articles in the network
 - **Link Direction**: Maintains proper directional relationships
 - **Expansion Tracking**: Prevents re-expansion of already processed nodes
+- **Priority Queue**: Processes high-quality articles first (Vital > Featured > Good > Backlink count)
+- **Context Menu**: Smart menu system with disabled states for unavailable actions
 - **Memory Efficient**: Limits link counts to prevent browser overload
 
 ### Performance
@@ -60,9 +71,13 @@ An interactive network visualization tool that maps Wikipedia articles and their
 
 1. **Start**: Open `index.html` in a web browser
 2. **Explore**: The graph begins with "Artificial Intelligence" as the root
-3. **Expand**: Click any node to reveal more connected articles
+3. **Interact**: Click any node to open the context menu with options:
+   - Open Wikipedia page in new tab
+   - Expand node with 10 more connected articles
+   - Collapse node by removing leaf connections
+   - Set node as new root for the graph
 4. **Navigate**: Use mouse to zoom, pan, and drag nodes
-5. **Visit**: Ctrl/Cmd+Click to open Wikipedia pages
+5. **Prioritization**: High-quality articles (Vital/Featured/Good) are processed first
 
 ## Configuration
 
@@ -109,15 +124,19 @@ The application provides detailed console output:
 - **Outbound Links**: `https://en.wikipedia.org/w/api.php?action=query&prop=links`
 - **Inbound Links**: `https://en.wikipedia.org/w/api.php?action=query&list=backlinks`
 - **Page Validation**: `https://en.wikipedia.org/w/api.php?action=query&titles=`
+- **Article Categories**: `https://en.wikipedia.org/w/api.php?action=query&prop=categories`
+- **Backlink Count**: `https://en.wikipedia.org/w/api.php?action=query&list=backlinks&bllimit=max`
 
 ### Data Flow
 1. Initialize with root article
 2. Fetch outbound + inbound links
-3. Validate page existence
-4. Add valid pages as nodes
-5. Create directional links
-6. Update visual representation
-7. Enable click-to-expand for all nodes
+3. Validate page existence and fetch metadata
+4. Assess article quality (Vital/Featured/Good) and backlink count
+5. Add valid pages as nodes with priority scoring
+6. Create directional links
+7. Sort processing queue by priority (highest first)
+8. Update visual representation with quality-based styling
+9. Enable context menu interactions for all nodes
 
 ## Roadmap
 
@@ -163,9 +182,11 @@ Implement intelligent caching system to dramatically improve performance and red
 ## Future Enhancements
 
 - **Search Functionality**: Custom root article selection ✅ (Completed)
+- **Priority-Based Crawling**: Vital/Featured/Good articles first ✅ (Completed)
+- **Context Menu System**: Multi-option node interactions ✅ (Completed)
 - **Export Options**: Save graph as image or data
-- **Filtering**: Hide/show specific link types
-- **Clustering**: Group related articles
+- **Filtering**: Hide/show specific link types or quality levels
+- **Clustering**: Group related articles by topic or quality
 - **Performance**: Virtual rendering for large graphs
 - **Mobile**: Touch-optimized interactions
 

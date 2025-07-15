@@ -71,7 +71,9 @@
         }
         
         .node.root {
-            fill: #4CAF50;
+            fill: #FFFFFF;
+            stroke: #4CAF50;
+            stroke-width: 3px;
         }
         
         .node.missing {
@@ -84,6 +86,24 @@
         
         .node.second-degree {
             fill: #45b7d1;
+        }
+        
+        .node.vital {
+            fill: #FFD700;
+            stroke: #FF6B00;
+            stroke-width: 3px;
+        }
+        
+        .node.featured {
+            fill: #32CD32;
+            stroke: #228B22;
+            stroke-width: 2px;
+        }
+        
+        .node.good {
+            fill: #87CEEB;
+            stroke: #4682B4;
+            stroke-width: 2px;
         }
         
         .node.expandable {
@@ -252,6 +272,47 @@
         .links-panel a:last-child {
             margin-bottom: 0;
         }
+        
+        .context-menu {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 8px 0;
+            min-width: 180px;
+            z-index: 2000;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+        
+        .context-menu-item {
+            padding: 8px 16px;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            transition: background-color 0.2s;
+        }
+        
+        .context-menu-item:hover {
+            background-color: #333;
+        }
+        
+        .context-menu-item.disabled {
+            color: #666;
+            cursor: not-allowed;
+        }
+        
+        .context-menu-item.disabled:hover {
+            background-color: transparent;
+        }
+        
+        .context-menu-icon {
+            margin-right: 8px;
+            width: 16px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -290,15 +351,34 @@
             <button onclick="resetGraph()">Reset</button>
             <button onclick="pauseResume()" id="pause-btn">Pause</button>
             <div class="help-text">
-                <strong>Click:</strong> Expand node (10 more links)<br>
-                <strong>Ctrl+Click:</strong> Open Wikipedia page<br>
+                <strong>Click:</strong> Show context menu<br>
+                <strong>Menu:</strong> Open page, Expand, Collapse, Set as root<br>
                 <strong>Drag:</strong> Move nodes<br>
-                <strong>Colors:</strong> 🟢 Root, 🔵 Links, 🔴 Missing, 🟡 Expandable
+                <strong>Colors:</strong> ⚪ Root, 🟡 Vital, 🟢 Featured, 🔵 Good, 🔵 Links, 🔴 Missing
             </div>
         </div>
         
         <div class="graph-container">
             <svg id="graph"></svg>
+        </div>
+        
+        <div class="context-menu" id="context-menu">
+            <div class="context-menu-item" id="context-open">
+                <span class="context-menu-icon">🔗</span>
+                <span>Open Wikipedia Page</span>
+            </div>
+            <div class="context-menu-item" id="context-collapse">
+                <span class="context-menu-icon">🔄</span>
+                <span>Collapse (Remove Leaves)</span>
+            </div>
+            <div class="context-menu-item" id="context-expand">
+                <span class="context-menu-icon">➕</span>
+                <span>Expand (10 more links)</span>
+            </div>
+            <div class="context-menu-item" id="context-set-root">
+                <span class="context-menu-icon">🎯</span>
+                <span>Set as Root</span>
+            </div>
         </div>
     </div>
 
@@ -313,6 +393,8 @@
                 this.queue = [];
                 this.isProcessing = false;
                 this.isPaused = false;
+                this.contextMenu = null;
+                this.selectedNode = null;
                 
                 // D3 setup
                 this.width = window.innerWidth;
@@ -347,7 +429,103 @@
                 
                 // Start with hardcoded article
                 this.startArticle = "Artificial_intelligence";
+                this.initContextMenu();
                 this.init();
+            }
+            
+            initContextMenu() {
+                this.contextMenu = document.getElementById('context-menu');
+                
+                // Add event listeners for context menu items
+                document.getElementById('context-open').addEventListener('click', (event) => {
+                    if (!event.target.closest('.context-menu-item').classList.contains('disabled')) {
+                        this.openWikipediaPage();
+                        this.hideContextMenu();
+                    }
+                });
+                
+                document.getElementById('context-collapse').addEventListener('click', (event) => {
+                    if (!event.target.closest('.context-menu-item').classList.contains('disabled')) {
+                        this.collapseNode();
+                        this.hideContextMenu();
+                    }
+                });
+                
+                document.getElementById('context-expand').addEventListener('click', (event) => {
+                    if (!event.target.closest('.context-menu-item').classList.contains('disabled')) {
+                        this.expandSelectedNode();
+                        this.hideContextMenu();
+                    }
+                });
+                
+                document.getElementById('context-set-root').addEventListener('click', (event) => {
+                    if (!event.target.closest('.context-menu-item').classList.contains('disabled')) {
+                        this.setAsRoot();
+                        this.hideContextMenu();
+                    }
+                });
+                
+                // Hide context menu when clicking elsewhere
+                document.addEventListener('click', (event) => {
+                    if (!this.contextMenu.contains(event.target) && !event.target.closest('.node-group')) {
+                        this.hideContextMenu();
+                    }
+                });
+            }
+            
+            showContextMenu(event, node) {
+                event.preventDefault();
+                event.stopPropagation();
+                
+                this.selectedNode = node;
+                this.contextMenu.style.display = 'block';
+                this.contextMenu.style.left = `${event.pageX}px`;
+                this.contextMenu.style.top = `${event.pageY}px`;
+                
+                // Update menu item states
+                this.updateContextMenuState(node);
+            }
+            
+            hideContextMenu() {
+                this.contextMenu.style.display = 'none';
+                this.selectedNode = null;
+            }
+            
+            updateContextMenuState(node) {
+                const collapseItem = document.getElementById('context-collapse');
+                const expandItem = document.getElementById('context-expand');
+                const setRootItem = document.getElementById('context-set-root');
+                
+                // Check if node can be collapsed (has leaf nodes)
+                const hasLeafNodes = this.hasLeafNodes(node);
+                collapseItem.classList.toggle('disabled', !hasLeafNodes);
+                
+                // Check if node can be expanded (not already expanded or missing)
+                const canExpand = !this.expandedNodes.has(node.id) && node.type !== 'missing';
+                expandItem.classList.toggle('disabled', !canExpand);
+                
+                // Check if node can be set as root (not already root)
+                const canSetRoot = node.type !== 'root';
+                setRootItem.classList.toggle('disabled', !canSetRoot);
+            }
+            
+            hasLeafNodes(node) {
+                // Check if this node has connections to leaf nodes (nodes with only one connection)
+                const nodeConnections = this.getNodeConnections(node.id);
+                return nodeConnections.some(connectedId => {
+                    const connectedNode = this.nodes.get(connectedId);
+                    return connectedNode && this.getNodeConnections(connectedId).length === 1;
+                });
+            }
+            
+            getNodeConnections(nodeId) {
+                const connections = [];
+                for (const linkId of this.links) {
+                    const [source, target] = linkId.split('-');
+                    if (source === nodeId) connections.push(target);
+                    if (target === nodeId) connections.push(source);
+                }
+                return connections;
             }
             
             async init() {
@@ -359,13 +537,13 @@
                 this.updateDisplay();
                 
                 // Queue the root article for processing
-                this.queue.push({title: this.startArticle, degree: 0});
+                this.queue.push({title: this.startArticle, degree: 0, priority: 0});
                 
                 // Start processing
                 this.processQueue();
             }
             
-            addNode(title, type, degree) {
+            addNode(title, type, degree, metadata = null) {
                 if (!this.nodes.has(title)) {
                     this.nodes.set(title, {
                         id: title,
@@ -373,13 +551,82 @@
                         type: type,
                         degree: degree,
                         expanded: false,
+                        priority: metadata?.priority || 0,
+                        backlinkCount: metadata?.backlinkCount || 0,
+                        isVital: metadata?.isVital || false,
+                        isFeatured: metadata?.isFeatured || false,
+                        isGood: metadata?.isGood || false,
                         x: Math.random() * this.width,
                         y: Math.random() * this.height
                     });
-                    console.log(`➕ Added node: ${title} (${type})`);
+                    console.log(`➕ Added node: ${title} (${type}, priority: ${metadata?.priority || 0})`);
                 }
             }
             
+            openWikipediaPage() {
+                if (this.selectedNode) {
+                    console.log(`🔗 Opening Wikipedia page: ${this.selectedNode.title}`);
+                    window.open(`https://en.wikipedia.org/wiki/${this.selectedNode.title}`, '_blank');
+                }
+            }
+            
+            collapseNode() {
+                if (!this.selectedNode) return;
+                
+                const nodeId = this.selectedNode.id;
+                const connections = this.getNodeConnections(nodeId);
+                
+                // Find leaf nodes (nodes with only one connection to the selected node)
+                const leafNodes = connections.filter(connectedId => {
+                    const connectedNode = this.nodes.get(connectedId);
+                    return connectedNode && this.getNodeConnections(connectedId).length === 1;
+                });
+                
+                console.log(`🔄 Collapsing ${leafNodes.length} leaf nodes from ${nodeId}`);
+                
+                // Remove leaf nodes and their links
+                for (const leafId of leafNodes) {
+                    this.nodes.delete(leafId);
+                    this.expandedNodes.delete(leafId);
+                    this.processedArticles.delete(leafId);
+                    
+                    // Remove all links involving this leaf node
+                    const linksToRemove = [];
+                    for (const linkId of this.links) {
+                        const [source, target] = linkId.split('-');
+                        if (source === leafId || target === leafId) {
+                            linksToRemove.push(linkId);
+                        }
+                    }
+                    
+                    for (const linkId of linksToRemove) {
+                        this.links.delete(linkId);
+                    }
+                }
+                
+                // Mark the selected node as not expanded so it can be expanded again
+                this.expandedNodes.delete(nodeId);
+                const node = this.nodes.get(nodeId);
+                if (node) {
+                    node.expanded = false;
+                }
+                
+                this.updateDisplay();
+            }
+            
+            expandSelectedNode() {
+                if (this.selectedNode) {
+                    this.expandNode(this.selectedNode.id);
+                }
+            }
+            
+            setAsRoot() {
+                if (this.selectedNode && this.selectedNode.type !== 'root') {
+                    console.log(`🎯 Setting ${this.selectedNode.title} as new root`);
+                    this.loadNewRoot(this.selectedNode.title);
+                }
+            }
+
             async expandNode(title) {
                 if (this.expandedNodes.has(title)) {
                     console.log(`⏭️ Node ${title} already expanded`);
@@ -406,8 +653,12 @@
                     for (const link of outboundLinks) {
                         if (!this.nodes.has(link)) {
                             const pageExists = await this.checkPageExists(link);
-                            const nodeType = pageExists ? "first-degree" : "missing";
-                            this.addNode(link, nodeType, node.degree + 1);
+                            if (pageExists) {
+                                const metadata = await this.getArticleMetadata(link);
+                                this.addNode(link, "first-degree", node.degree + 1, metadata);
+                            } else {
+                                this.addNode(link, "missing", node.degree + 1);
+                            }
                         }
                         this.addLink(title, link);
                     }
@@ -416,8 +667,12 @@
                     for (const link of inboundLinks) {
                         if (!this.nodes.has(link)) {
                             const pageExists = await this.checkPageExists(link);
-                            const nodeType = pageExists ? "first-degree" : "missing";
-                            this.addNode(link, nodeType, node.degree + 1);
+                            if (pageExists) {
+                                const metadata = await this.getArticleMetadata(link);
+                                this.addNode(link, "first-degree", node.degree + 1, metadata);
+                            } else {
+                                this.addNode(link, "missing", node.degree + 1);
+                            }
                         }
                         this.addLink(link, title);
                     }
@@ -457,6 +712,10 @@
                 }
                 
                 this.isProcessing = true;
+                
+                // Sort queue by priority (highest priority first)
+                this.queue.sort((a, b) => b.priority - a.priority);
+                
                 const current = this.queue.shift();
                 
                 if (this.processedArticles.has(current.title)) {
@@ -467,8 +726,8 @@
                 this.processedArticles.add(current.title);
                 
                 try {
-                    this.updateStatus(`Processing: ${current.title}`);
-                    console.log(`📖 Reading article: ${current.title} (degree: ${current.degree})`);
+                    this.updateStatus(`Processing: ${current.title} (priority: ${current.priority})`);
+                    console.log(`📖 Reading article: ${current.title} (degree: ${current.degree}, priority: ${current.priority})`);
                     
                     // Fetch both outbound and inbound links
                     const outboundLinks = await this.fetchArticleLinks(current.title, 'outbound');
@@ -483,12 +742,14 @@
                         // Check if the page exists before adding as node
                         const pageExists = await this.checkPageExists(link);
                         if (pageExists) {
-                            this.addNode(link, nodeType, current.degree + 1);
+                            // Get metadata for prioritization
+                            const metadata = await this.getArticleMetadata(link);
+                            this.addNode(link, nodeType, current.degree + 1, metadata);
                             this.addLink(current.title, link);
                             
                             // Queue for further processing if not too deep
                             if (current.degree < 1) {
-                                this.queue.push({title: link, degree: current.degree + 1});
+                                this.queue.push({title: link, degree: current.degree + 1, priority: metadata.priority});
                             }
                         } else {
                             // Add missing page as red node
@@ -505,12 +766,14 @@
                         // Check if the page exists before adding as node
                         const pageExists = await this.checkPageExists(link);
                         if (pageExists) {
-                            this.addNode(link, nodeType, current.degree + 1);
+                            // Get metadata for prioritization
+                            const metadata = await this.getArticleMetadata(link);
+                            this.addNode(link, nodeType, current.degree + 1, metadata);
                             this.addLink(link, current.title); // Note: reversed direction for inbound links
                             
                             // Queue for further processing if not too deep
                             if (current.degree < 1) {
-                                this.queue.push({title: link, degree: current.degree + 1});
+                                this.queue.push({title: link, degree: current.degree + 1, priority: metadata.priority});
                             }
                         } else {
                             // Add missing page as red node
@@ -558,6 +821,88 @@
                 } catch (error) {
                     console.error(`❌ Error checking page existence for ${title}:`, error);
                     return false;
+                }
+            }
+
+            async getArticleMetadata(title) {
+                try {
+                    // Get categories and basic info
+                    const categoryUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&titles=${encodeURIComponent(title)}&prop=categories&cllimit=max`;
+                    const backlinkUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&list=backlinks&bltitle=${encodeURIComponent(title)}&bllimit=max&blfilterredir=nonredirects`;
+                    
+                    const [categoryResponse, backlinkResponse] = await Promise.all([
+                        fetch(categoryUrl),
+                        fetch(backlinkUrl)
+                    ]);
+                    
+                    if (!categoryResponse.ok || !backlinkResponse.ok) {
+                        return { priority: 0, backlinkCount: 0, categories: [] };
+                    }
+                    
+                    const categoryData = await categoryResponse.json();
+                    const backlinkData = await backlinkResponse.json();
+                    
+                    // Extract categories
+                    const categories = [];
+                    if (categoryData.query && categoryData.query.pages) {
+                        const pageId = Object.keys(categoryData.query.pages)[0];
+                        const pageCategories = categoryData.query.pages[pageId].categories || [];
+                        categories.push(...pageCategories.map(cat => cat.title));
+                    }
+                    
+                    // Count backlinks
+                    const backlinkCount = backlinkData.query && backlinkData.query.backlinks ? 
+                        backlinkData.query.backlinks.length : 0;
+                    
+                    // Calculate priority based on quality indicators
+                    let priority = 0;
+                    
+                    // Check for quality categories
+                    const isVital = categories.some(cat => 
+                        cat.includes('Vital articles') || 
+                        cat.includes('Level-1 vital articles') || 
+                        cat.includes('Level-2 vital articles') ||
+                        cat.includes('Level-3 vital articles') ||
+                        cat.includes('Level-4 vital articles') ||
+                        cat.includes('Level-5 vital articles')
+                    );
+                    
+                    const isFeatured = categories.some(cat => 
+                        cat.includes('Featured articles') ||
+                        cat.includes('Featured lists') ||
+                        cat.includes('Featured article candidates')
+                    );
+                    
+                    const isGood = categories.some(cat => 
+                        cat.includes('Good articles') ||
+                        cat.includes('Good article nominees')
+                    );
+                    
+                    // Assign priority scores
+                    if (isVital) {
+                        priority = 3000; // Vital articles get highest priority
+                    } else if (isFeatured) {
+                        priority = 2000; // Featured articles get high priority
+                    } else if (isGood) {
+                        priority = 1000; // Good articles get medium priority
+                    } else {
+                        priority = backlinkCount; // Other articles prioritized by backlink count
+                    }
+                    
+                    console.log(`🏆 Article metadata for ${title}: priority=${priority}, backlinks=${backlinkCount}, vital=${isVital}, featured=${isFeatured}, good=${isGood}`);
+                    
+                    return { 
+                        priority, 
+                        backlinkCount, 
+                        categories,
+                        isVital,
+                        isFeatured,
+                        isGood
+                    };
+                    
+                } catch (error) {
+                    console.error(`❌ Error fetching metadata for ${title}:`, error);
+                    return { priority: 0, backlinkCount: 0, categories: [] };
                 }
             }
 
@@ -669,19 +1014,25 @@
                         .on("end", this.dragended.bind(this)));
                 
                 nodeEnter.append("circle")
-                    .attr("class", d => `node ${d.type} ${this.expandedNodes.has(d.id) ? 'expandable' : ''}`)
-                    .attr("r", d => d.type === "root" ? 12 : (d.type === "first-degree" ? 8 : 6))
+                    .attr("class", d => {
+                        let classes = `node ${d.type}`;
+                        if (d.isVital) classes += ' vital';
+                        else if (d.isFeatured) classes += ' featured';
+                        else if (d.isGood) classes += ' good';
+                        if (this.expandedNodes.has(d.id)) classes += ' expandable';
+                        return classes;
+                    })
+                    .attr("r", d => {
+                        if (d.type === "root") return 12;
+                        if (d.isVital) return 10;
+                        if (d.isFeatured) return 9;
+                        if (d.isGood) return 8;
+                        return d.type === "first-degree" ? 8 : 6;
+                    })
                     .on("click", (event, d) => {
                         event.stopPropagation();
-                        if (event.ctrlKey || event.metaKey) {
-                            // Ctrl/Cmd + Click: Open Wikipedia page
-                            console.log(`🖱️ Opening Wikipedia page: ${d.title}`);
-                            window.open(`https://en.wikipedia.org/wiki/${d.title}`, '_blank');
-                        } else {
-                            // Regular click: Expand node
-                            console.log(`🖱️ Expanding node: ${d.title}`);
-                            this.expandNode(d.title);
-                        }
+                        console.log(`🖱️ Showing context menu for node: ${d.title}`);
+                        this.showContextMenu(event, d);
                     });
                 
                 nodeEnter.append("text")
