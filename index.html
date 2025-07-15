@@ -532,26 +532,47 @@
                 console.log("🚀 Starting Wikipedia graph visualization");
                 this.updateStatus("Loading root article...");
                 
-                // Add root node
-                this.addNode(this.startArticle, "root", 0);
+                // Get metadata for root article
+                const rootMetadata = await this.getArticleMetadata(this.startArticle);
+                
+                // Add root node with metadata
+                this.addNode(this.startArticle, "root", 0, rootMetadata);
                 this.updateDisplay();
                 
                 // Queue the root article for processing
-                this.queue.push({title: this.startArticle, degree: 0, priority: 0});
+                const rootPriority = this.calculatePriority(rootMetadata, 0);
+                this.queue.push({title: this.startArticle, degree: 0, priority: rootPriority});
                 
                 // Start processing
                 this.processQueue();
             }
             
+            calculatePriority(metadata, degree) {
+                if (!metadata) return 0;
+                
+                const { importanceBonus = 0, editCount = 0, backlinkCount = 0 } = metadata;
+                
+                // Formula: (importance bonus + # of edits + # of backlinks) / degree from root
+                // Avoid division by zero for root node
+                const effectiveDegree = Math.max(degree, 1);
+                const priority = (importanceBonus + editCount + backlinkCount) / effectiveDegree;
+                
+                return Math.round(priority);
+            }
+
             addNode(title, type, degree, metadata = null) {
                 if (!this.nodes.has(title)) {
+                    const priority = this.calculatePriority(metadata, degree);
+                    
                     this.nodes.set(title, {
                         id: title,
                         title: title,
                         type: type,
                         degree: degree,
                         expanded: false,
-                        priority: metadata?.priority || 0,
+                        priority: priority,
+                        importanceBonus: metadata?.importanceBonus || 0,
+                        editCount: metadata?.editCount || 0,
                         backlinkCount: metadata?.backlinkCount || 0,
                         isVital: metadata?.isVital || false,
                         isFeatured: metadata?.isFeatured || false,
@@ -559,7 +580,7 @@
                         x: Math.random() * this.width,
                         y: Math.random() * this.height
                     });
-                    console.log(`➕ Added node: ${title} (${type}, priority: ${metadata?.priority || 0})`);
+                    console.log(`➕ Added node: ${title} (${type}, degree: ${degree}, priority: ${priority})`);
                 }
             }
             
@@ -620,10 +641,10 @@
                 }
             }
             
-            setAsRoot() {
+            async setAsRoot() {
                 if (this.selectedNode && this.selectedNode.type !== 'root') {
                     console.log(`🎯 Setting ${this.selectedNode.title} as new root`);
-                    this.loadNewRoot(this.selectedNode.title);
+                    await this.loadNewRoot(this.selectedNode.title);
                 }
             }
 
@@ -726,7 +747,7 @@
                 this.processedArticles.add(current.title);
                 
                 try {
-                    this.updateStatus(`Processing: ${current.title} (priority: ${current.priority})`);
+                    this.updateStatus(`Processing: ${current.title} (deg: ${current.degree}, pri: ${current.priority})`);
                     console.log(`📖 Reading article: ${current.title} (degree: ${current.degree}, priority: ${current.priority})`);
                     
                     // Fetch both outbound and inbound links
@@ -749,7 +770,9 @@
                             
                             // Queue for further processing if not too deep
                             if (current.degree < 1) {
-                                this.queue.push({title: link, degree: current.degree + 1, priority: metadata.priority});
+                                const nextDegree = current.degree + 1;
+                                const nextPriority = this.calculatePriority(metadata, nextDegree);
+                                this.queue.push({title: link, degree: nextDegree, priority: nextPriority});
                             }
                         } else {
                             // Add missing page as red node
@@ -773,7 +796,9 @@
                             
                             // Queue for further processing if not too deep
                             if (current.degree < 1) {
-                                this.queue.push({title: link, degree: current.degree + 1, priority: metadata.priority});
+                                const nextDegree = current.degree + 1;
+                                const nextPriority = this.calculatePriority(metadata, nextDegree);
+                                this.queue.push({title: link, degree: nextDegree, priority: nextPriority});
                             }
                         } else {
                             // Add missing page as red node
@@ -826,21 +851,24 @@
 
             async getArticleMetadata(title) {
                 try {
-                    // Get categories and basic info
-                    const categoryUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&titles=${encodeURIComponent(title)}&prop=categories&cllimit=max`;
+                    // Get categories, edit count, and backlinks
+                    const categoryUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&titles=${encodeURIComponent(title)}&prop=categories|info&cllimit=max&inprop=watchers`;
                     const backlinkUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&list=backlinks&bltitle=${encodeURIComponent(title)}&bllimit=max&blfilterredir=nonredirects`;
+                    const revisionUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&titles=${encodeURIComponent(title)}&prop=revisions&rvprop=ids&rvlimit=max`;
                     
-                    const [categoryResponse, backlinkResponse] = await Promise.all([
+                    const [categoryResponse, backlinkResponse, revisionResponse] = await Promise.all([
                         fetch(categoryUrl),
-                        fetch(backlinkUrl)
+                        fetch(backlinkUrl),
+                        fetch(revisionUrl)
                     ]);
                     
-                    if (!categoryResponse.ok || !backlinkResponse.ok) {
-                        return { priority: 0, backlinkCount: 0, categories: [] };
+                    if (!categoryResponse.ok || !backlinkResponse.ok || !revisionResponse.ok) {
+                        return { priority: 0, backlinkCount: 0, editCount: 0, categories: [] };
                     }
                     
                     const categoryData = await categoryResponse.json();
                     const backlinkData = await backlinkResponse.json();
+                    const revisionData = await revisionResponse.json();
                     
                     // Extract categories
                     const categories = [];
@@ -854,8 +882,13 @@
                     const backlinkCount = backlinkData.query && backlinkData.query.backlinks ? 
                         backlinkData.query.backlinks.length : 0;
                     
-                    // Calculate priority based on quality indicators
-                    let priority = 0;
+                    // Count edits (revisions)
+                    let editCount = 0;
+                    if (revisionData.query && revisionData.query.pages) {
+                        const pageId = Object.keys(revisionData.query.pages)[0];
+                        const revisions = revisionData.query.pages[pageId].revisions || [];
+                        editCount = revisions.length;
+                    }
                     
                     // Check for quality categories
                     const isVital = categories.some(cat => 
@@ -878,21 +911,21 @@
                         cat.includes('Good article nominees')
                     );
                     
-                    // Assign priority scores
+                    // Calculate importance bonus
+                    let importanceBonus = 0;
                     if (isVital) {
-                        priority = 3000; // Vital articles get highest priority
+                        importanceBonus = 3000; // Vital articles get highest bonus
                     } else if (isFeatured) {
-                        priority = 2000; // Featured articles get high priority
+                        importanceBonus = 2000; // Featured articles get high bonus
                     } else if (isGood) {
-                        priority = 1000; // Good articles get medium priority
-                    } else {
-                        priority = backlinkCount; // Other articles prioritized by backlink count
+                        importanceBonus = 1000; // Good articles get medium bonus
                     }
                     
-                    console.log(`🏆 Article metadata for ${title}: priority=${priority}, backlinks=${backlinkCount}, vital=${isVital}, featured=${isFeatured}, good=${isGood}`);
+                    console.log(`🏆 Article metadata for ${title}: importance=${importanceBonus}, edits=${editCount}, backlinks=${backlinkCount}, vital=${isVital}, featured=${isFeatured}, good=${isGood}`);
                     
                     return { 
-                        priority, 
+                        importanceBonus,
+                        editCount,
                         backlinkCount, 
                         categories,
                         isVital,
@@ -902,7 +935,7 @@
                     
                 } catch (error) {
                     console.error(`❌ Error fetching metadata for ${title}:`, error);
-                    return { priority: 0, backlinkCount: 0, categories: [] };
+                    return { importanceBonus: 0, editCount: 0, backlinkCount: 0, categories: [], isVital: false, isFeatured: false, isGood: false };
                 }
             }
 
@@ -1041,6 +1074,18 @@
                     .text(d => d.title.replace(/_/g, ' '))
                     .style("font-size", d => d.type === "root" ? "14px" : (d.type === "first-degree" ? "12px" : "10px"));
                 
+                // Add degree number display
+                nodeEnter.append("text")
+                    .attr("class", "node-degree")
+                    .attr("dy", -5)
+                    .text(d => d.degree)
+                    .style("font-size", "10px")
+                    .style("fill", "#FFD700")
+                    .style("font-weight", "bold")
+                    .style("text-anchor", "middle")
+                    .style("pointer-events", "none")
+                    .style("user-select", "none");
+                
                 nodeSelection.exit().remove();
                 
                 // Update simulation
@@ -1115,7 +1160,7 @@
                 this.init();
             }
             
-            loadNewRoot(articleTitle) {
+            async loadNewRoot(articleTitle) {
                 // Convert display name to Wikipedia title format
                 const normalizedTitle = articleTitle.replace(/ /g, '_');
                 console.log(`🔄 Loading new root article: ${normalizedTitle}`);
@@ -1142,7 +1187,7 @@
                 }
                 
                 // Start fresh initialization
-                this.init();
+                await this.init();
             }
         }
         
@@ -1164,7 +1209,7 @@
             }
         }
         
-        function loadNewRoot() {
+        async function loadNewRoot() {
             const input = document.getElementById("root-input");
             const button = document.getElementById("go-button");
             const articleTitle = input.value.trim();
@@ -1179,7 +1224,7 @@
             button.textContent = "Loading...";
             
             // Load new root article
-            graph.loadNewRoot(articleTitle);
+            await graph.loadNewRoot(articleTitle);
             
             // Re-enable button after a short delay
             setTimeout(() => {
