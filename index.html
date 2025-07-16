@@ -118,9 +118,27 @@
             animation: pulse 1s ease-in-out infinite alternate;
         }
         
+        .node.processing {
+            stroke: #00BCD4;
+            stroke-width: 5px;
+            animation: glow 0.8s ease-in-out infinite alternate;
+            filter: drop-shadow(0 0 8px #00BCD4);
+        }
+        
         @keyframes pulse {
             from { stroke-opacity: 0.8; }
             to { stroke-opacity: 0.3; }
+        }
+        
+        @keyframes glow {
+            from { 
+                stroke-opacity: 1;
+                filter: drop-shadow(0 0 8px #00BCD4);
+            }
+            to { 
+                stroke-opacity: 0.4;
+                filter: drop-shadow(0 0 15px #00BCD4);
+            }
         }
         
         .link {
@@ -713,6 +731,7 @@
                     .select("circle");
                 
                 nodeElement.classed("expanding", state === "expanding");
+                nodeElement.classed("processing", state === "processing");
                 nodeElement.classed("expandable", state === "expandable");
             }
             
@@ -749,6 +768,9 @@
                 try {
                     this.updateStatus(`Processing: ${current.title} (deg: ${current.degree}, pri: ${current.priority})`);
                     console.log(`📖 Reading article: ${current.title} (degree: ${current.degree}, priority: ${current.priority})`);
+                    
+                    // Show processing state visual feedback
+                    this.updateNodeVisuals(current.title, 'processing');
                     
                     // Fetch both outbound and inbound links
                     const outboundLinks = await this.fetchArticleLinks(current.title, 'outbound');
@@ -810,6 +832,9 @@
                     
                     this.updateDisplay();
                     
+                    // Remove processing state and mark as expandable
+                    this.updateNodeVisuals(current.title, 'expandable');
+                    
                     // Process next item with delay
                     setTimeout(() => {
                         this.processQueue();
@@ -817,6 +842,8 @@
                     
                 } catch (error) {
                     console.error(`❌ Error processing ${current.title}:`, error);
+                    // Remove processing state on error
+                    this.updateNodeVisuals(current.title, 'expandable');
                     setTimeout(() => {
                         this.processQueue();
                     }, 1000);
